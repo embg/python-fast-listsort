@@ -1,0 +1,50 @@
+< #include "fast_compares.c"
+< PyObject* unsafe_unicode_compare(PyObject* left, PyObject* right, int not_used){
+<   /* Reference implementation: PyUnicode_Compare in Objects/unicodeobject.c
+<    * left and right are assumed to both be PyUnicode_Type
+<    */
+<   if (PyUnicode_READY(left) == -1 ||
+<       PyUnicode_READY(right) == -1)
+<     return NULL;
+<   return unicode_compare(left, right) == -1 ? Py_True : Py_False;
+---
+< PyObject* unsafe_long_compare(PyObject* left, PyObject* right, int not_used){
+<   /* Reference implementation: long_richcompare in Objects/longobject.c
+<    * left and right are assumed to both be PyLong_Type
+<    */
+<   return long_compare((PyLongObject*)left, (PyLongObject*)right) == -1 ? Py_True : Py_False;
+---
+31c1912
+< fast_listsort(FastListObject *self_fastlist, PyObject *args, PyObject *kwds)
+---
+> listsort(PyListObject *self, PyObject *args, PyObject *kwds)
+33d1913
+<     PyListObject* self = (PyListObject*)self_fastlist;
+92,94d1971
+<         //Get type of the first key
+<         keys[0] = PyObject_CallFunctionObjArgs(keyfunc, saved_ob_item[0], NULL);
+< 
+98d1974
+< 
+112,131d1987
+<     /* Turn off type checking if all keys are same type,
+<      * by replacing PyObject_RichCompare with lo.keys[0]->ob_type->tp_richcompare,
+<      * and possibly also use optimized comparison functions if keys are strings or ints.
+<      */
+<     int keys_are_all_same_type = 1;
+<     PyTypeObject* key_type = lo.keys[0]->ob_type;
+<     for (i=0; i< saved_ob_size; i++)
+<       if (lo.keys[i]->ob_type != key_type)
+<         keys_are_all_same_type = 0;
+< 
+<     if (keys_are_all_same_type){
+<       if (key_type == &PyUnicode_Type)
+<         compare_function = unsafe_unicode_compare;
+<       if (key_type == &PyLong_Type)
+<         compare_function = unsafe_long_compare;
+<       else
+<         compare_function = key_type->tp_richcompare;
+<     }
+<     /* End of evil type checking stuff */
+< 
+230a2087,2992
