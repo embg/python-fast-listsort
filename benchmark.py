@@ -7,7 +7,7 @@ L = [random.randrange(int(1e7)) for _ in range(int(1e7))]
 
 F = FastList(L[:])
 start = time(); F.fastsort(); print("F.fastsort():", time()-start)
-l
+
 F = FastList(L[:])
 start = time(); F.sort(); print("F.sort():", time()-start)
 
