@@ -30,7 +30,6 @@ PyObject* cmp_result;
 static PyObject *
 fast_listsort(FastListObject *self_fastlist, PyObject *args, PyObject *kwds)
 {
-    compare_function = PyObject_RichCompare;
     PyListObject* self = (PyListObject*)self_fastlist;
     MergeState ms;
     Py_ssize_t nremaining;
@@ -130,7 +129,9 @@ fast_listsort(FastListObject *self_fastlist, PyObject *args, PyObject *kwds)
         compare_function = unsafe_long_compare;
       else
         compare_function = key_type->tp_richcompare;
-    } 
+    } else {
+      compare_function = PyObject_RichCompare;
+    }
     /* End of evil type checking stuff */
 
     merge_init(&ms, saved_ob_size, keys != NULL);
