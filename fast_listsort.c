@@ -19,7 +19,7 @@ PyObject* unsafe_long_compare(PyObject* left, PyObject* right, int not_used){
   return long_compare((PyLongObject*)left, (PyLongObject*)right) == -1 ? Py_True : Py_False;
 }
 
-PyObject* (*compare_function)(PyObject* left, PyObject* right, int op) = PyObject_RichCompare;
+PyObject* (*compare_function)(PyObject* left, PyObject* right, int op);
 PyObject* cmp_result;
 #define ISLT(X, Y) ((*compare_function)(X,Y,Py_LT))
 #define IFLT(X, Y) if ((cmp_result = ISLT(X, Y)) == NULL) goto fail; \
@@ -30,6 +30,7 @@ PyObject* cmp_result;
 static PyObject *
 fast_listsort(FastListObject *self_fastlist, PyObject *args, PyObject *kwds)
 {
+    compare_function = PyObject_RichCompare;
     PyListObject* self = (PyListObject*)self_fastlist;
     MergeState ms;
     Py_ssize_t nremaining;
@@ -126,7 +127,7 @@ fast_listsort(FastListObject *self_fastlist, PyObject *args, PyObject *kwds)
         compare_function = unsafe_long_compare;
       else
         compare_function = key_type->tp_richcompare;
-    }
+    } 
     /* End of evil type checking stuff */
 
     merge_init(&ms, saved_ob_size, keys != NULL);
