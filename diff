@@ -14,6 +14,12 @@
 <    */
 <   return long_compare((PyLongObject*)left, (PyLongObject*)right) == -1 ? Py_True : Py_False;
 ---
+< PyObject* (*compare_function)(PyObject* left, PyObject* right, int op) = PyObject_RichCompare;
+< PyObject* cmp_result;
+< #define ISLT(X, Y) ((*compare_function)(X,Y,Py_LT))
+< #define IFLT(X, Y) if ((cmp_result = ISLT(X, Y)) == NULL) goto fail; \
+<   if (cmp_result == Py_True)
+---
 31c1912
 < fast_listsort(FastListObject *self_fastlist, PyObject *args, PyObject *kwds)
 ---

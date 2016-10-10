@@ -2,7 +2,6 @@ from fastlist import FastList
 import random; random.seed(42)
 from time import time
 
-
 print("*** 10 ints ***")
 L = [random.randrange(int(10)) for _ in range(int(10))]
 
