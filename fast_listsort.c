@@ -116,9 +116,12 @@ fast_listsort(FastListObject *self_fastlist, PyObject *args, PyObject *kwds)
      */
     int keys_are_all_same_type = 1;
     PyTypeObject* key_type = lo.keys[0]->ob_type;
-    for (i=0; i< saved_ob_size; i++)
-      if (lo.keys[i]->ob_type != key_type)
+    for (i=0; i< saved_ob_size; i++){
+      if (lo.keys[i]->ob_type != key_type){
         keys_are_all_same_type = 0;
+        break;
+      }
+    }
 
     if (keys_are_all_same_type){
       if (key_type == &PyUnicode_Type)
