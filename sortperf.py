@@ -88,7 +88,7 @@ def tabulate(r):
 
     """
     cases = tuple([ch + "sort" for ch in r"*\/3+%~=!"])
-    fmt = ("%2s %7s" + " %6s"*len(cases))
+    fmt = ("%2s %7s" + " %7s"*len(cases))
     print(fmt % (("i", "2**i") + cases))
     for i in r:
         n = 1 << i
