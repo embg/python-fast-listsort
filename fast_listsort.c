@@ -19,8 +19,7 @@ PyObject* unsafe_long_compare(PyObject* left, PyObject* right, int not_used){
   return long_compare((PyLongObject*)left, (PyLongObject*)right) == -1 ? Py_True : Py_False;
 }
 
-static PyObject*
-unsafe_float_compare(PyObject *v, PyObject *w, int not_used)
+PyObject* unsafe_float_compare(PyObject *v, PyObject *w, int not_used)
 {
   /* Reference implementation: PyFloat_RichCompare in Objects/floatobject.c
    * This is a direct copy-paste, just with all typechecks set assuming v and w are floats and loops of the form if(0) cut out.
