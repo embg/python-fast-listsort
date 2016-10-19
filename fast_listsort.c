@@ -2,37 +2,47 @@
  * just like the RichCompare functions. But they're faster for these special cases.
  */
 #include "fast_compares.c"
-PyObject* unsafe_unicode_compare(PyObject* left, PyObject* right, int not_used){
+
+PyObject* (*tp_richcompare)(PyObject* left, PyObject* right, int op);
+int tp_richcompare_wrapper(PyObject* left, PyObject* right, int op){
+  PyObject* k;
+  if (!(k = tp_richcompare(left, right, op)))
+      return -1;
+
+  return k == Py_True;
+}
+
+int unsafe_unicode_compare(PyObject* left, PyObject* right, int not_used){
   /* Reference implementation: PyUnicode_Compare in Objects/unicodeobject.c
    * left and right are assumed to both be PyUnicode_Type
    */
   if (PyUnicode_READY(left) == -1 ||
       PyUnicode_READY(right) == -1)
-    return NULL;
-  return unicode_compare(left, right) == -1 ? Py_True : Py_False;
+    return -1;
+  return unicode_compare(left, right);
 }
 
-PyObject* unsafe_long_compare(PyObject* left, PyObject* right, int not_used){
+int unsafe_long_compare(PyObject* left, PyObject* right, int not_used){
   /* Reference implementation: long_richcompare in Objects/longobject.c
    * left and right are assumed to both be PyLong_Type
    */
-  return long_compare((PyLongObject*)left, (PyLongObject*)right) == -1 ? Py_True : Py_False;
+  return long_compare((PyLongObject*)left, (PyLongObject*)right);
 }
 
-PyObject* unsafe_float_compare(PyObject *v, PyObject *w, int not_used)
+int unsafe_float_compare(PyObject *v, PyObject *w, int not_used)
 {
   /* Reference implementation: PyFloat_RichCompare in Objects/floatobject.c
    * This is a direct copy-paste, just with all typechecks set assuming v and w are floats and loops of the form if(0) cut out.
    * It turns out if you set all the typechecks assuming v and w are floats and cut out those ifs you end up with just one line! Seriously, try it!
-  */
-  return (PyFloat_AS_DOUBLE(v) < PyFloat_AS_DOUBLE(w)) == 0 ? Py_False : Py_True;
+   */
+  return PyFloat_AS_DOUBLE(v) < PyFloat_AS_DOUBLE(w);
 }
 
-PyObject* (*compare_function)(PyObject* left, PyObject* right, int op);
-PyObject* cmp_result;
-#define ISLT(X, Y) ((*compare_function)(X,Y,Py_LT))
-#define IFLT(X, Y) if ((cmp_result = ISLT(X, Y)) == NULL) goto fail; \
-  if (cmp_result == Py_True)
+//PyObject* unsafe_tuple_compare(PyObject* left, PyObject* right, int not_used){
+int (*compare_function)(PyObject* left, PyObject* right, int op);
+#define ISLT(X, Y) ((*compare_function)(X, Y, Py_LT))
+#define IFLT(X, Y) if ((k = ISLT(X, Y)) < 0) goto fail; \
+  if (k)
 
 #include "listsort_helpers.c"
 
@@ -124,24 +134,26 @@ fast_listsort(FastListObject *self_fastlist, PyObject *args, PyObject *kwds)
      */
     int keys_are_all_same_type = 1;
     PyTypeObject* key_type = lo.keys[0]->ob_type;
-    for (i=0; i< saved_ob_size; i++){
-      if (lo.keys[i]->ob_type != key_type){
+    for (i=0; i< saved_ob_size; i++) {
+      if (lo.keys[i]->ob_type != key_type) {
         keys_are_all_same_type = 0;
         break;
       }
     }
-
-    if (keys_are_all_same_type){
+    //keys_are_all_same_type=0;
+    if (keys_are_all_same_type) {
       if (key_type == &PyUnicode_Type)
         compare_function = unsafe_unicode_compare;
       if (key_type == &PyLong_Type)
         compare_function = unsafe_long_compare;
       if (key_type == &PyFloat_Type)
         compare_function = unsafe_float_compare;
-      else
-        compare_function = key_type->tp_richcompare;
+      else {
+        tp_richcompare = key_type->tp_richcompare;
+        compare_function = tp_richcompare_wrapper;
+      }
     } else {
-      compare_function = PyObject_RichCompare;
+      compare_function = PyObject_RichCompareBool;
     }
     /* End of evil type checking stuff */
 
