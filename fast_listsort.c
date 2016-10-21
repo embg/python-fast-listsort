@@ -1,45 +1,59 @@
-/* These functions return Py_True if x<y, Py_False if x >= y, and NULL if error,
- * just like the RichCompare functions. But they're faster for these special cases.
- */
 #include "fast_compares.c"
 
-PyObject* (*tp_richcompare)(PyObject* left, PyObject* right, int op);
-int tp_richcompare_wrapper(PyObject* left, PyObject* right, int op){
-  PyObject* k;
-  if (!(k = tp_richcompare(left, right, op)))
-      return -1;
+static int (*compare_function)(PyObject* v, PyObject* w, int op);
 
-  return k == Py_True;
-}
-
-int unsafe_unicode_compare(PyObject* left, PyObject* right, int not_used){
-  /* Reference implementation: PyUnicode_Compare in Objects/unicodeobject.c
-   * left and right are assumed to both be PyUnicode_Type
-   */
-  if (PyUnicode_READY(left) == -1 ||
-      PyUnicode_READY(right) == -1)
-    return -1;
-  return unicode_compare(left, right);
-}
-
-int unsafe_long_compare(PyObject* left, PyObject* right, int not_used){
-  /* Reference implementation: long_richcompare in Objects/longobject.c
-   * left and right are assumed to both be PyLong_Type
-   */
-  return long_compare((PyLongObject*)left, (PyLongObject*)right);
-}
-
-int unsafe_float_compare(PyObject *v, PyObject *w, int not_used)
+assign_compare_function(PyObject* first_item,
+                        int keys_are_all_same_type,
+                        int strings_are_latin,
+                        int ints_are_bounded,
+                        int tuples_are_homogenous)
 {
-  /* Reference implementation: PyFloat_RichCompare in Objects/floatobject.c
-   * This is a direct copy-paste, just with all typechecks set assuming v and w are floats and loops of the form if(0) cut out.
-   * It turns out if you set all the typechecks assuming v and w are floats and cut out those ifs you end up with just one line! Seriously, try it!
-   */
-  return PyFloat_AS_DOUBLE(v) < PyFloat_AS_DOUBLE(w);
+  if (keys_are_all_same_type) {
+    PyTypeObject* key_type = first_item->ob_type;
+    if (key_type == &PyUnicode_Type) {
+      compare_function = (strings_are_latin ? \
+                          unsafe_latin_unicode_compare :
+                          unsafe_general_unicode_compare);
+    }
+    else if (key_type == &PyLong_Type) {
+      compare_function = (ints_are_bounded ? \
+                          unsafe_small_long_compare :
+                          unsafe_general_long_compare);
+    }
+    else if (key_type == &PyFloat_Type) {
+      compare_function = unsafe_float_compare;
+    }
+    else if (key_type == &PyTuple_Type) {
+      /* Now let's see if we can optimize the elementwise compares between tuples:
+       * are the tuples homogenous with respect to type?
+       */
+      if (tuples_are_homogenous) {
+        compare_function = unsafe_homogenous_tuple_compare;
+        int i;
+        for (i=0; i<first_item->ob_size; i++) {
+          PyTypeObject* element_type = PyTuple_GET_ITEM(first_item,i)->ob_type;
+          if (element_type == &PyUnicode_Type)
+            elem_compare_funcs[i] = unsafe_general_unicode_compare;
+          else if (element_type = &PyLong_Type)
+            elem_compare_funcs[i] = unsafe_general_long_compare;
+          else if (element_type = &PyFloat_Type)
+            elem_compare_funcs[i] = unsafe_general_float_compare;
+          else
+            elem_compare_funcs[i] = PyObject_RichCompareBool;
+        }
+      } else {
+        compare_function = unsafe_heterogenous_tuple_compare;
+      }
+    }
+    else {
+      compare_function = tp_richcompare_wrapper;
+      tp_richcompare = first_item->op_type->tp_richcompare;
+    }
+  } else {
+    compare_function = PyObject_RichCompareBool;
+  }
 }
 
-//PyObject* unsafe_tuple_compare(PyObject* left, PyObject* right, int not_used){
-int (*compare_function)(PyObject* left, PyObject* right, int op);
 #define ISLT(X, Y) ((*compare_function)(X, Y, Py_LT))
 #define IFLT(X, Y) if ((k = ISLT(X, Y)) < 0) goto fail; \
   if (k)
@@ -132,30 +146,56 @@ fast_listsort(FastListObject *self_fastlist, PyObject *args, PyObject *kwds)
      * by replacing PyObject_RichCompare with lo.keys[0]->ob_type->tp_richcompare,
      * and possibly also use optimized comparison functions if keys are strings or ints.
      */
+
+    /* Get information about the first element of the list */
     int keys_are_all_same_type = 1;
     PyTypeObject* key_type = lo.keys[0]->ob_type;
+    int strings_are_latin = 1; int ints_are_bounded = 1; int tuples_are_homogenous = 1;
+    int tuple_size; PyTypeObject** tuple_key_types;
+    if (key_type == &PyTuple_Types){
+      tuple_size = Py_SIZE(lo.keys[0]);
+      tuple_key_types = (PyTypeObject**)malloc(saved_ob_size*sizeof(PyTypeObject*));
+      for (int j=0; j<tuple_size; j++)
+        tuple_key_types[i] = PyTuple_GET_ITEM(lo.keys[0],j)->ob_type;
+    }
+    
+    /* Verify the info about the first list element holds for the entire list */
     for (i=0; i< saved_ob_size; i++) {
-      if (lo.keys[i]->ob_type != key_type) {
-        keys_are_all_same_type = 0;
-        break;
-      }
+      if (lo.keys[i]->ob_type != key_type)
+        {
+          keys_are_all_same_type = 0;
+          break;
+        }
+      else if (key_type == &PyLong_Type && strings_are_latin)
+        {
+          if (Py_SIZE(lo.keys[i]) < -1 || Py_SIZE(lo.keys[i]) > 1)
+            ints_are_bounded = 0;
+        }
+      else if (key_type == &PyUnicode_Type && ints_are_bounded)
+        {
+          if (PyUnicode_KIND(lo.keys[i]) != PyUnicode_1BYTE_KIND)
+            strings_are_latin = 0;
+        }
+      else if (key_type == &PyTuple_Type && tuples_are_homogenous)
+        {
+          if (Py_SIZE(lo.keys[i]) != tuple_size){
+            tuples_are_homogenous = 0;
+          } else {
+            for (int j=0; j<tuple_size; j++){
+              if (PyTuple_GET_ITEM(lo.keys[i],j)->ob_type != tuple_key_types[j])
+                tuples_are_homogenous = 0;
+            }
+          }
+        }
     }
-    //keys_are_all_same_type=0;
-    if (keys_are_all_same_type) {
-      if (key_type == &PyUnicode_Type)
-        compare_function = unsafe_unicode_compare;
-      if (key_type == &PyLong_Type)
-        compare_function = unsafe_long_compare;
-      if (key_type == &PyFloat_Type)
-        compare_function = unsafe_float_compare;
-      else {
-        tp_richcompare = key_type->tp_richcompare;
-        compare_function = tp_richcompare_wrapper;
-      }
-    } else {
-      compare_function = PyObject_RichCompareBool;
-    }
-    /* End of evil type checking stuff */
+    free(tuple_key_types);
+
+    assign_compare_function(lo.keys[0],
+                            keys_are_all_same_type,
+                            strings_are_latin,
+                            ints_are_bounded,
+                            tuples_are_homogenous);
+    /* End of type-checking stuff! */
 
     merge_init(&ms, saved_ob_size, keys != NULL);
 
@@ -256,3 +296,4 @@ keyfunc_fail:
 }
 #undef IFLT
 #undef ISLT
+
