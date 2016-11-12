@@ -113,7 +113,7 @@ static PyObject* fast_listsort(FastListObject *self_fastlist, PyObject *args, Py
     for (i=0; i< saved_ob_size; i++) {
 
       if (keys_are_in_tuples &&
-          (lo.keys[i]->ob_type != &PyTuple_Type || Py_SIZE(lo.keys[0]) == 0)){
+          (lo.keys[i]->ob_type != &PyTuple_Type || Py_SIZE(lo.keys[i]) == 0)){
         keys_are_in_tuples = 0;
         keys_are_all_same_type = 0;
         break;
